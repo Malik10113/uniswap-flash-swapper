@@ -33,24 +33,12 @@ contract UniswapFlashSwapper {
     // @param _tokenPay The address of the token you want to use to payback the flash-borrow, use 0x0 for ETH
     // @param _userData Data that will be passed to the `execute` function for the user
     // @dev Depending on your use case, you may want to add access controls to this function
-    function startSwap(address _tokenBorrow, uint256 _amount, address _tokenPay, bytes memory _userData) internal {
-        bool isBorrowingEth;
-        bool isPayingEth;
-        address tokenBorrow = _tokenBorrow;
-        address tokenPay = _tokenPay;
-        simpleFlashSwap(tokenBorrow, _amount, tokenPay, isBorrowingEth, isPayingEth, _userData);
-         return;
-        
-
-    }
 
     // @dev This initiates the flash borrow. See `simpleFlashSwapExecute` for the code that executes after the borrow.
     function simpleFlashSwap(
         address _tokenBorrow,
         uint _amount,
         address _tokenPay,
-        bool _isBorrowingEth,
-        bool _isPayingEth,
         bytes memory _userData
     ) private {
         permissionedPairAddress = uniswapV2Factory.getPair(_tokenBorrow, _tokenPay); // is it cheaper to compute this locally?
@@ -65,8 +53,6 @@ contract UniswapFlashSwapper {
             _tokenBorrow,
             _amount,
             _tokenPay,
-            _isBorrowingEth,
-            _isPayingEth,
             bytes(""),
             _userData
         );
@@ -80,15 +66,9 @@ contract UniswapFlashSwapper {
         uint _amount,
         address _tokenPay,
         address _pairAddress,
-        bool _isBorrowingEth,
-        bool _isPayingEth,
         bytes memory _userData
-    ) private {
-        // unwrap WETH if necessary
-        if (_isBorrowingEth) {
-            IWETH(WETH).withdraw(_amount);
-        }
-
+    ) 
+    private{
         // compute the amount of _tokenPay that needs to be repaid
         address pairAddress = permissionedPairAddress; // gas efficiency
         uint pairBalanceTokenBorrow = IERC20(_tokenBorrow).balanceOf(pairAddress);
@@ -96,17 +76,12 @@ contract UniswapFlashSwapper {
         uint amountToRepay = ((1000 * pairBalanceTokenPay * _amount) / (997 * pairBalanceTokenBorrow)) + 1;
 
         // get the orignal tokens the user requested
-        address tokenBorrowed = _isBorrowingEth ? ETH : _tokenBorrow;
-        address tokenToRepay = _isPayingEth ? ETH : _tokenPay;
+        address tokenBorrowed = _tokenBorrow;
+        address tokenToRepay = _tokenPay;
 
         // do whatever the user wants
         execute(tokenBorrowed, _amount, tokenToRepay, amountToRepay, _userData);
-
-        // payback loan
-        // wrap ETH if necessary
-        if (_isPayingEth) {
-            IWETH(WETH).deposit.value(amountToRepay)();
-        }
+       
         IERC20(_tokenPay).transfer(_pairAddress, amountToRepay);
     }
      // @notice Function is called by the Uniswap V2 pair's `swap` function
@@ -121,12 +96,10 @@ contract UniswapFlashSwapper {
             address _tokenBorrow,
             uint _amount,
             address _tokenPay,
-            bool _isBorrowingEth,
-            bool _isPayingEth,
             bytes memory _triangleData,
             bytes memory _userData
         ) = abi.decode(_data, (SwapType, address, uint, address, bool, bool, bytes, bytes));
-        simpleFlashSwapExecute(_tokenBorrow, _amount, _tokenPay, msg.sender, _isBorrowingEth, _isPayingEth, _userData);
+        simpleFlashSwapExecute(_tokenBorrow, _amount, _tokenPay, msg.sender, _userData);
         return;
         // NOOP to silence compiler "unused parameter" warning
         if (false) {
