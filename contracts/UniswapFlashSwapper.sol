@@ -19,9 +19,8 @@ contract UniswapFlashSwapper {
     address WETH;
     address DAI;
 
-    constructor(address _DAI, address _WETH) public {
-        WETH = _WETH;
-        DAI = _DAI;
+    constructor(uint _foo) public {
+        foo = _foo
     }
 
     // Fallback must be payable
@@ -39,7 +38,8 @@ contract UniswapFlashSwapper {
         address _tokenBorrow,
         uint _amount,
         address _tokenPay,
-        bytes memory _userData
+        bytes memory _userData,
+        bool call
     ) private {
         permissionedPairAddress = uniswapV2Factory.getPair(_tokenBorrow, _tokenPay); // is it cheaper to compute this locally?
         address pairAddress = permissionedPairAddress; // gas efficiency
@@ -56,7 +56,42 @@ contract UniswapFlashSwapper {
             bytes(""),
             _userData
         );
+        if(call){
         IUniswapV2Pair(pairAddress).swap(amount0Out, amount1Out, address(this), data);
+        return;
+        }
+        else{
+        uint pairBalanceTokenBorrow = IERC20(_tokenBorrow).balanceOf(pairAddress);
+        uint pairBalanceTokenPay = IERC20(_tokenPay).balanceOf(pairAddress);
+        uint amountToRepay = ((1000 * pairBalanceTokenPay * _amount) / (997 * pairBalanceTokenBorrow)) + 1;
+        return amountToRepay;
+        }
+        
+    }
+    
+    // @notice Function is called by the Uniswap V2 pair's `swap` function
+     function uniswapV2Call(address _sender, uint _amount0, uint _amount1, bytes calldata _data) external 
+     {
+        // access control
+        require(msg.sender == permissionedPairAddress, "only permissioned UniswapV2 pair can call");
+        require(_sender == address(this), "only this contract may initiate");
+
+        // decode data
+        (
+            SwapType _swapType,
+            address _tokenBorrow,
+            uint _amount,
+            address _tokenPay,
+            bytes memory _triangleData,
+            bytes memory _userData
+        ) = abi.decode(_data, (SwapType, address, uint, address, bool, bool, bytes, bytes));
+        simpleFlashSwapExecute(_tokenBorrow, _amount, _tokenPay, msg.sender, _userData);
+        return;
+        // NOOP to silence compiler "unused parameter" warning
+        if (false) {
+            _amount0;
+            _amount1;
+        }
     }
 
     // @notice This is the code that is executed after `simpleFlashSwap` initiated the flash-borrow
@@ -84,28 +119,7 @@ contract UniswapFlashSwapper {
        
         IERC20(_tokenPay).transfer(_pairAddress, amountToRepay);
     }
-     // @notice Function is called by the Uniswap V2 pair's `swap` function
-     function uniswapV2Call(address _sender, uint _amount0, uint _amount1, bytes calldata _data) external {
-        // access control
-        require(msg.sender == permissionedPairAddress, "only permissioned UniswapV2 pair can call");
-        require(_sender == address(this), "only this contract may initiate");
-
-        // decode data
-        (
-            SwapType _swapType,
-            address _tokenBorrow,
-            uint _amount,
-            address _tokenPay,
-            bytes memory _triangleData,
-            bytes memory _userData
-        ) = abi.decode(_data, (SwapType, address, uint, address, bool, bool, bytes, bytes));
-        simpleFlashSwapExecute(_tokenBorrow, _amount, _tokenPay, msg.sender, _userData);
-        return;
-        // NOOP to silence compiler "unused parameter" warning
-        if (false) {
-            _amount0;
-            _amount1;
-        }
-    }
-
+    function execute(address _tokenBorrow, uint _amount, address _tokenPay, uint _amountToRepay, bytes memory _userData) internal;
+     
+}
    
