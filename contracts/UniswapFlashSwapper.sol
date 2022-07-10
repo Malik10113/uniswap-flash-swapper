@@ -97,62 +97,7 @@ contract UniswapFlashSwapper {
         }
     }
 
-    // @notice This function is used when the user repays with the same token they borrowed
-    // @dev This initiates the flash borrow. See `simpleFlashLoanExecute` for the code that executes after the borrow.
-    function simpleFlashLoan(address _tokenBorrow, uint256 _amount, bool _isBorrowingEth, bool _isPayingEth, bytes memory _userData) private {
-        address tokenOther = _tokenBorrow == WETH ? DAI : WETH;
-        permissionedPairAddress = uniswapV2Factory.getPair(_tokenBorrow, tokenOther); // is it cheaper to compute this locally?
-        address pairAddress = permissionedPairAddress; // gas efficiency
-        require(pairAddress != address(0), "Requested _token is not available.");
-        address token0 = IUniswapV2Pair(pairAddress).token0();
-        address token1 = IUniswapV2Pair(pairAddress).token1();
-        uint amount0Out = _tokenBorrow == token0 ? _amount : 0;
-        uint amount1Out = _tokenBorrow == token1 ? _amount : 0;
-        bytes memory data = abi.encode(
-            SwapType.SimpleLoan,
-            _tokenBorrow,
-            _amount,
-            _tokenBorrow,
-            _isBorrowingEth,
-            _isPayingEth,
-            bytes(""),
-            _userData
-        ); // note _tokenBorrow == _tokenPay
-        IUniswapV2Pair(pairAddress).swap(amount0Out, amount1Out, address(this), data);
-    }
-
-    // @notice This is the code that is executed after `simpleFlashLoan` initiated the flash-borrow
-    // @dev When this code executes, this contract will hold the flash-borrowed _amount of _tokenBorrow
-    function simpleFlashLoanExecute(
-        address _tokenBorrow,
-        uint _amount,
-        address _pairAddress,
-        bool _isBorrowingEth,
-        bool _isPayingEth,
-        bytes memory _userData
-    ) private {
-        // unwrap WETH if necessary
-        if (_isBorrowingEth) {
-            IWETH(WETH).withdraw(_amount);
-        }
-
-        // compute amount of tokens that need to be paid back
-        uint fee = ((_amount * 3) / 997) + 1;
-        uint amountToRepay = _amount + fee;
-        address tokenBorrowed = _isBorrowingEth ? ETH : _tokenBorrow;
-        address tokenToRepay = _isPayingEth ? ETH : _tokenBorrow;
-
-        // do whatever the user wants
-        execute(tokenBorrowed, _amount, tokenToRepay, amountToRepay, _userData);
-
-        // payback the loan
-        // wrap the ETH if necessary
-        if (_isPayingEth) {
-            IWETH(WETH).deposit.value(amountToRepay)();
-        }
-        IERC20(_tokenBorrow).transfer(_pairAddress, amountToRepay);
-    }
-
+  
     // @notice This function is used when either the _tokenBorrow or _tokenPay is WETH or ETH
     // @dev Since ~all tokens trade against WETH (if they trade at all), we can use a single UniswapV2 pair to
     //     flash-borrow and repay with the requested tokens.
